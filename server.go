@@ -32,7 +32,7 @@ func (s *server) run() {
 		case CMD_MSG:
 			s.msg(cmd.client, cmd.args)
 		case CMD_QUIT:
-			s.quit(cmd.client)
+			s.quit(cmd.client, cmd.args)
 		}
 	}
 }
@@ -49,7 +49,7 @@ func (s *server) newClient(conn net.Conn) {
 
 func (s *server) nick(c *client, args []string) {
 	if len(args) == 2 {
-		if strings.Trim(args[1], " ") == "" {
+		if strings.TrimSpace(args[1]) == "" {
 			c.err(fmt.Errorf("nick cant be empty\n"))
 			return
 		}
@@ -63,8 +63,8 @@ func (s *server) nick(c *client, args []string) {
 
 func (s *server) join(c *client, args []string) {
 	if len(args) == 2 {
-		if strings.Trim(args[1], " ") == "" {
-			c.err(fmt.Errorf("room name cant be empty!\n"))
+		if strings.TrimSpace(args[1]) == "" {
+			c.err(fmt.Errorf("room name cant be empty or consist only of spaces!\n"))
 			return
 		}
 		roomName := args[1]
@@ -100,21 +100,31 @@ func (s *server) listRooms(c *client) {
 }
 
 func (s *server) msg(c *client, args []string) {
-	if c.room == nil {
-		c.err(errors.New("you must join the room first"))
+	if len(args) > 2 {
+		if c.room == nil {
+			c.err(errors.New("you must join the room first"))
+			return
+		}
+
+		c.room.broadcast(c, c.nick+": "+strings.Trim(strings.Join(args[1:], " "), " "))
+
+	} else {
+		c.err(fmt.Errorf("wrong command format! /msg <your message>"))
 		return
 	}
-
-	c.room.broadcast(c, c.nick+": "+strings.Join(args[1:], " "))
 }
 
-func (s *server) quit(c *client) {
-	log.Printf("client has disconnected: %s", c.conn.RemoteAddr().String())
+func (s *server) quit(c *client, args []string) {
+	if len(args) == 1 {
+		log.Printf("client has disconnected: %s", c.conn.RemoteAddr().String())
 
-	s.quitCurrentRoom(c)
+		s.quitCurrentRoom(c)
 
-	c.msg(":(")
-	c.conn.Close()
+		c.msg(":(")
+		c.conn.Close()
+	} else {
+		c.err(fmt.Errorf("wrong command format! /quit"))
+	}
 }
 
 func (s *server) quitCurrentRoom(c *client) {
