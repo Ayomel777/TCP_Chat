@@ -19,6 +19,7 @@ func newServer() *server {
 		commands: make(chan command),
 	}
 }
+
 func (s *server) run() {
 	for cmd := range s.commands {
 		switch cmd.id {
@@ -27,11 +28,11 @@ func (s *server) run() {
 		case CMD_JOIN:
 			s.join(cmd.client, cmd.args)
 		case CMD_ROOMS:
-			s.listRooms(cmd.client, cmd.args)
+			s.listRooms(cmd.client)
 		case CMD_MSG:
 			s.msg(cmd.client, cmd.args)
 		case CMD_QUIT:
-			s.quit(cmd.client, cmd.args)
+			s.quit(cmd.client)
 		}
 	}
 }
@@ -47,32 +48,49 @@ func (s *server) newClient(conn net.Conn) {
 }
 
 func (s *server) nick(c *client, args []string) {
-	c.nick = args[1]
-	c.msg(fmt.Sprintf("your nick is %s", c.nick))
+	if len(args) == 2 {
+		if strings.Trim(args[1], " ") == "" {
+			c.err(fmt.Errorf("nick cant be empty\n"))
+			return
+		}
+		c.nick = args[1]
+		c.msg(fmt.Sprintf("your nick is %s", c.nick))
+	} else {
+		c.err(fmt.Errorf("wrong command format! /nick <nickname>"))
+		return
+	}
 }
 
 func (s *server) join(c *client, args []string) {
-	roomName := args[1]
-	r, ok := s.rooms[roomName]
-	if !ok {
-		r = &room{
-			name:    roomName,
-			members: make(map[net.Addr]*client),
+	if len(args) == 2 {
+		if strings.Trim(args[1], " ") == "" {
+			c.err(fmt.Errorf("room name cant be empty!\n"))
+			return
 		}
-		s.rooms[roomName] = r
+		roomName := args[1]
+		r, ok := s.rooms[roomName]
+		if !ok {
+			r = &room{
+				name:    roomName,
+				members: make(map[net.Addr]*client),
+			}
+			s.rooms[roomName] = r
+		}
+
+		r.members[c.conn.RemoteAddr()] = c
+
+		s.quitCurrentRoom(c)
+		c.room = r
+
+		r.broadcast(c, fmt.Sprintf("%s has joined the room", c.nick))
+		c.msg(fmt.Sprintf("welcome to %s", r.name))
+	} else {
+		c.err(fmt.Errorf("wrong command format! /join <room_name>"))
+		return
 	}
-
-	r.members[c.conn.RemoteAddr()] = c
-
-	s.quitCurrentRoom(c)
-	c.room = r
-
-	r.broadcast(c, fmt.Sprintf("%s has joined the room", c.nick))
-	c.msg(fmt.Sprintf("welcome to %s", r.name))
-
 }
 
-func (s *server) listRooms(c *client, args []string) {
+func (s *server) listRooms(c *client) {
 	var rooms []string
 	for name := range s.rooms {
 		rooms = append(rooms, name)
@@ -90,7 +108,7 @@ func (s *server) msg(c *client, args []string) {
 	c.room.broadcast(c, c.nick+": "+strings.Join(args[1:], " "))
 }
 
-func (s *server) quit(c *client, args []string) {
+func (s *server) quit(c *client) {
 	log.Printf("client has disconnected: %s", c.conn.RemoteAddr().String())
 
 	s.quitCurrentRoom(c)
