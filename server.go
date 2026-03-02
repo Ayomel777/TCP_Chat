@@ -95,19 +95,26 @@ func (s *server) listRooms(c *client) {
 	for name := range s.rooms {
 		rooms = append(rooms, name)
 	}
-
-	c.msg(fmt.Sprintf("available rooms are: %s", strings.Join(rooms, ", ")))
+	if len(rooms) > 0 {
+		c.msg(fmt.Sprintf("available rooms are: %s", strings.Join(rooms, ", ")))
+	} else {
+		c.msg(fmt.Sprintf("no available rooms"))
+	}
 }
 
 func (s *server) msg(c *client, args []string) {
-	if len(args) > 2 {
+	if len(args) >= 2 {
 		if c.room == nil {
 			c.err(errors.New("you must join the room first"))
 			return
 		}
+		message := strings.Trim(strings.Join(args[1:], " "), " ")
+		if message == "" {
+			c.err(fmt.Errorf("message cannot be empty"))
+			return
+		}
 
-		c.room.broadcast(c, c.nick+": "+strings.Trim(strings.Join(args[1:], " "), " "))
-
+		c.room.broadcast(c, c.nick+": "+message)
 	} else {
 		c.err(fmt.Errorf("wrong command format! /msg <your message>"))
 		return
